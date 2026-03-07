@@ -169,35 +169,43 @@ services:
     restart: unless-stopped
     environment:
       JAVA_TIMEZONE: UTC
-
-      MB_SITE_URL: http://129.212.146.116:3030
-      MB_ENCRYPTION_SECRET_KEY: ${METABASE1_ENCRYPTION_KEY}
-
+      MB_SITE_URL: http://129.212.146.116:3015
       MB_SITE_NAME: ${METABASE1_SITE_NAME:-"Operations Dashboard"}
-      # MySQL Configuration - Option A: Separate variables (more reliable)
+      MB_ENCRYPTION_SECRET_KEY: ${METABASE1_ENCRYPTION_KEY}
+      
+      # MySQL Configuration - USE ONLY ONE METHOD
+      # METHOD 1: Separate variables (RECOMMENDED - currently using this)
       MB_DB_TYPE: mysql
       MB_DB_HOST: ${DIRECTUS_DB_HOST}
       MB_DB_PORT: ${DIRECTUS_DB_PORT:-25056}
-      MB_DB_DBNAME: ${METABASE1_DB_NAME1}
-      MB_DB_USER: ${METABASE1_DB_USER1}
-      MB_DB_PASS: ${METABASE1_DB_PASSWORD1}
+      MB_DB_DBNAME: ${METABASE1_DB_NAME}
+      MB_DB_USER: ${METABASE1_DB_USER}
+      MB_DB_PASS: ${METABASE1_DB_PASSWORD}
       MB_DB_SSL: "false"
-
-
-      MB_DB_CONNECTION_URI: ${METABASE1_MYSQL_URI1}
+      
+      # IMPORTANT: REMOVE or COMMENT OUT this line - it conflicts with above
+      # MB_DB_CONNECTION_URI: ${METABASE1_MYSQL_URI1}
+      
+      # Email config
       MB_EMAIL_FROM_ADDRESS: ${EMAIL_FROM}
       MB_SMTP_HOST: ${SMTP_HOST}
       MB_SMTP_PORT: ${SMTP_PORT:-587}
       MB_SMTP_USERNAME: ${SMTP_USER}
       MB_SMTP_PASSWORD: ${SMTP_PASSWORD}
       MB_SMTP_SECURITY: starttls
+      
+      # Security settings
       MB_EMBEDDING_SECRET_KEY: ${METABASE1_EMBEDDING_SECRET}
       MB_SESSION_COOKIE_SAMESITE: strict
       MB_PASSWORD_COMPLEXITY: strong
       MB_SESSION_TIMEOUT: '{"unit":"hours","amount":8}'
       MB_ANON_TRACKING_ENABLED: "false"
+      
+      # Server settings
       MB_JETTY_HOST: 0.0.0.0
       MB_JETTY_MAXTHREADS: 50
+      
+      # Java options
       JAVA_OPTS: >-
         -Xmx2g -Xms512m 
         -XX:+UseG1GC 
@@ -221,47 +229,48 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
-      retries: 5
-      start_period: 90s
+      retries: 10  # Increased retries
+      start_period: 120s  # Increased start period
 
-  # ---------------------------------------------------------------------------
-  # METABASE INSTANCE 2 - Analytics / Client-Facing
-  # ---------------------------------------------------------------------------
   metabase2:
     image: metabase/metabase:latest
     container_name: metabase2
     restart: unless-stopped
     environment:
       JAVA_TIMEZONE: UTC
-   
-      
+      MB_SITE_URL: http://129.212.146.116:3030
+      MB_SITE_NAME: ${METABASE2_SITE_NAME:-"Analytics Dashboard"}
       MB_ENCRYPTION_SECRET_KEY: ${METABASE2_ENCRYPTION_KEY}
-      MB_SITE_NAME: ${METABASE1_SITE_NAME:-"Operations Dashboard"}
-      MB_SITE_URL: http://129.212.146.116:3015
       
-      # MySQL Configuration - Option A: Separate variables (more reliable)
+      # MySQL Configuration - Separate variables
       MB_DB_TYPE: mysql
       MB_DB_HOST: ${DIRECTUS_DB_HOST}
       MB_DB_PORT: ${DIRECTUS_DB_PORT:-25060}
-      MB_DB_DBNAME: ${METABASE1_DB_NAME2}
-      MB_DB_USER: ${METABASE1_DB_USER2}
-      MB_DB_PASS: ${METABASE1_DB_PASSWORD2}
+      MB_DB_DBNAME: ${METABASE2_DB_NAME}  # Fixed: Changed from METABASE1_DB_NAME2
+      MB_DB_USER: ${METABASE2_DB_USER}    # Fixed: Changed from METABASE1_DB_USER2
+      MB_DB_PASS: ${METABASE2_DB_PASSWORD} # Fixed: Changed from METABASE1_DB_PASSWORD2
       MB_DB_SSL: "false"
-
-      # MB_DB_CONNECTION_URI: ${METABASE2_MYSQL_URI2}
+      
+      # Email config
       MB_EMAIL_FROM_ADDRESS: ${EMAIL_FROM}
       MB_SMTP_HOST: ${SMTP_HOST}
       MB_SMTP_PORT: ${SMTP_PORT:-587}
       MB_SMTP_USERNAME: ${SMTP_USER}
       MB_SMTP_PASSWORD: ${SMTP_PASSWORD}
       MB_SMTP_SECURITY: starttls
+      
+      # Security settings
       MB_EMBEDDING_SECRET_KEY: ${METABASE2_EMBEDDING_SECRET}
       MB_SESSION_COOKIE_SAMESITE: strict
       MB_PASSWORD_COMPLEXITY: strong
       MB_SESSION_TIMEOUT: '{"unit":"hours","amount":8}'
       MB_ANON_TRACKING_ENABLED: "false"
+      
+      # Server settings
       MB_JETTY_HOST: 0.0.0.0
       MB_JETTY_MAXTHREADS: 50
+      
+      # Java options
       JAVA_OPTS: >-
         -Xmx2g -Xms512m 
         -XX:+UseG1GC 
@@ -285,10 +294,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
-      retries: 5
-      start_period: 90s
-
-
+      retries: 10
+      start_period: 120s
 # ---------------------------------------------------------------------------
 # NETWORKS
 # ---------------------------------------------------------------------------
