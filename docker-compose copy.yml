@@ -281,8 +281,8 @@ services:
       MB_SITE_NAME: ${METABASE1_SITE_NAME:-"Operations Dashboard"}
       MB_SITE_URL: https://metabase1.${DOMAIN}
       MB_ENCRYPTION_SECRET_KEY: ${METABASE1_ENCRYPTION_KEY}
-      MB_DB_TYPE: mongo
-      MB_DB_CONNECTION_URI: ${METABASE1_MONGODB_URI}
+      MB_DB_TYPE: mysql
+      MB_DB_CONNECTION_URI: ${METABASE1_MYSQL_URI1}
       MB_EMAIL_FROM_ADDRESS: ${EMAIL_FROM}
       MB_SMTP_HOST: ${SMTP_HOST}
       MB_SMTP_PORT: ${SMTP_PORT:-587}
@@ -326,9 +326,9 @@ services:
       MB_SITE_NAME: ${METABASE2_SITE_NAME:-"Analytics Dashboard"}
       MB_SITE_URL: https://metabase2.${DOMAIN}
       MB_ENCRYPTION_SECRET_KEY: ${METABASE2_ENCRYPTION_KEY}
-      # DIFFERENT MongoDB database name from instance 1
-      MB_DB_TYPE: mongo
-      MB_DB_CONNECTION_URI: ${METABASE2_MONGODB_URI}
+      # DIFFERENT MySQL database name from instance 1
+      MB_DB_TYPE: mysql
+      MB_DB_CONNECTION_URI: ${METABASE2_MYSQL_URI2}
       MB_EMAIL_FROM_ADDRESS: ${EMAIL_FROM}
       MB_SMTP_HOST: ${SMTP_HOST}
       MB_SMTP_PORT: ${SMTP_PORT:-587}

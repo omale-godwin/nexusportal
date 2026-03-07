@@ -202,7 +202,7 @@ services:
       - metabase1_plugins:/plugins
       - metabase1_logs:/var/log/metabase
     ports:
-      - "3000:3000"
+      - "3015:3000"
     networks:
       - nginx_net
       - metabase_net
