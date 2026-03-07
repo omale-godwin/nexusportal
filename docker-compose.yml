@@ -1,4 +1,3 @@
-version: "3.9"
 
 # =============================================================================
 # PRODUCTION DOCKER COMPOSE
@@ -147,8 +146,8 @@ services:
       - nginx_net
       - flowise_net
       - ollama_net
-    depends_on:
-      - ollama
+    # depends_on:
+    #   - ollama
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/v1/ping"]
       interval: 30s
