@@ -80,6 +80,8 @@ services:
     image: flowiseai/flowise:latest
     container_name: flowise
     restart: unless-stopped
+    ports:
+      - "3012:3000"
     environment:
       PORT: 3000
       FLOWISE_USERNAME: ${FLOWISE_USERNAME}
@@ -140,8 +142,7 @@ services:
     volumes:
       - flowise_data:/data
       - flowise_uploads:/data/uploads
-    expose:
-      - "3000"
+
     networks:
       - nginx_net
       - flowise_net
@@ -185,9 +186,9 @@ services:
       - openclaw_config:/home/node/.openclaw
       - openclaw_workspace:/home/node/openclaw/workspace
       - openclaw_data:/home/node/.openclaw/data
-    expose:
-      - "18789"
-      - "18793"
+    ports:
+      - "18789:18789"
+      - "18793:18793"
     networks:
       - nginx_net
       - openclaw_net
@@ -278,8 +279,8 @@ services:
       - directus_extensions:/directus/extensions
       - directus_templates:/directus/templates
       - directus_logs:/directus/logs
-    expose:
-      - "8055"
+    ports:
+      - "8055:8055"
     networks:
       - nginx_net
       - directus_net
@@ -323,8 +324,8 @@ services:
       - metabase1_data:/metabase-data
       - metabase1_plugins:/plugins
       - metabase1_logs:/var/log/metabase
-    expose:
-      - "3000"
+    ports:
+      - "3000:3015"
     networks:
       - nginx_net
       - metabase_net
@@ -369,8 +370,8 @@ services:
       - metabase2_data:/metabase-data
       - metabase2_plugins:/plugins
       - metabase2_logs:/var/log/metabase
-    expose:
-      - "3000"
+    ports:
+      - "3030:3000"
     networks:
       - nginx_net
       - metabase_net
