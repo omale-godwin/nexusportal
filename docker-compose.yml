@@ -306,7 +306,7 @@ services:
   # ---------------------------------------------------------------------------
   # METABASE INSTANCE 1 - Operations / Internal Team
   # ---------------------------------------------------------------------------
-  metabase1:
+metabase1:
     image: metabase/metabase:v0.51.4
     container_name: metabase1
     restart: unless-stopped
@@ -330,14 +330,23 @@ services:
       MB_ANON_TRACKING_ENABLED: "false"
       MB_JETTY_HOST: 0.0.0.0
       MB_JETTY_MAXTHREADS: 50
+      # Updated Java options to fix initialization error
       JAVA_OPTS: >-
-        -Xmx2g -Xms512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200
+        -Xmx2g -Xms512m 
+        -XX:+UseG1GC 
+        -XX:MaxGCPauseMillis=200
+        -XX:+IgnoreUnrecognizedVMOptions
+        --add-opens=java.base/java.net=ALL-UNNAMED
+        --add-opens=java.base/java.lang=ALL-UNNAMED
+        --add-opens=java.base/java.util=ALL-UNNAMED
+        --add-opens=java.base/java.time=ALL-UNNAMED
+        -Djava.security.egd=file:/dev/./urandom
     volumes:
       - metabase1_data:/metabase-data
       - metabase1_plugins:/plugins
       - metabase1_logs:/var/log/metabase
     ports:
-      - "3000:3015"
+      - "3000:3000"  # Changed from 3015 to 3000 for consistency
     networks:
       - nginx_net
       - metabase_net
@@ -348,10 +357,7 @@ services:
       retries: 5
       start_period: 90s
 
-  # ---------------------------------------------------------------------------
-  # METABASE INSTANCE 2 - Analytics / Client-Facing
-  # ---------------------------------------------------------------------------
-  metabase2:
+metabase2:
     image: metabase/metabase:v0.51.4
     container_name: metabase2
     restart: unless-stopped
@@ -360,7 +366,6 @@ services:
       MB_SITE_NAME: ${METABASE2_SITE_NAME:-"Analytics Dashboard"}
       MB_SITE_URL: https://metabase2.${DOMAIN}
       MB_ENCRYPTION_SECRET_KEY: ${METABASE2_ENCRYPTION_KEY}
-      # DIFFERENT MongoDB database name from instance 1
       MB_DB_TYPE: mongo
       MB_DB_CONNECTION_URI: ${METABASE2_MONGODB_URI}
       MB_EMAIL_FROM_ADDRESS: ${EMAIL_FROM}
@@ -376,8 +381,17 @@ services:
       MB_ANON_TRACKING_ENABLED: "false"
       MB_JETTY_HOST: 0.0.0.0
       MB_JETTY_MAXTHREADS: 50
+      # Updated Java options to fix initialization error
       JAVA_OPTS: >-
-        -Xmx2g -Xms512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200
+        -Xmx2g -Xms512m 
+        -XX:+UseG1GC 
+        -XX:MaxGCPauseMillis=200
+        -XX:+IgnoreUnrecognizedVMOptions
+        --add-opens=java.base/java.net=ALL-UNNAMED
+        --add-opens=java.base/java.lang=ALL-UNNAMED
+        --add-opens=java.base/java.util=ALL-UNNAMED
+        --add-opens=java.base/java.time=ALL-UNNAMED
+        -Djava.security.egd=file:/dev/./urandom
     volumes:
       - metabase2_data:/metabase-data
       - metabase2_plugins:/plugins
