@@ -245,11 +245,27 @@ services:
       DB_DATABASE: ${DIRECTUS_DB_NAME}
       DB_USER: ${DIRECTUS_DB_USER}
       DB_PASSWORD: ${DIRECTUS_DB_PASSWORD}
+
+      # SSL Configuration
       DB_SSL__REJECT_UNAUTHORIZED: "false"
-      DB_SSL__CA: /certs/do-ca.crt
+      
+      # Force migrations
+      DB_VERSION: ""  # Clear this to force fresh migration detection
+      MIGRATIONS_TIMEOUT: 60000  # Increase timeout
+      
+      # Add this to see more detailed logs
+      LOG_LEVEL: debug
+      
       ADMIN_EMAIL: ${DIRECTUS_ADMIN_EMAIL}
       ADMIN_PASSWORD: ${DIRECTUS_ADMIN_PASSWORD}
-      PUBLIC_URL: https://cms.${DOMAIN}
+      PUBLIC_URL: "http://129.212.146.116:8055/"  # Use your actual IP
+      CORS_ENABLED: "true"
+      CORS_ORIGIN: "*"
+      REFRESH_TOKEN_COOKIE_SECURE: "false"
+      REFRESH_TOKEN_COOKIE_SAME_SITE: "lax"
+
+
+      DB_SSL__CA: /certs/do-ca.crt
       STORAGE_LOCATIONS: local
       STORAGE_LOCAL_ROOT: /directus/uploads
       CACHE_ENABLED: "true"
@@ -257,8 +273,6 @@ services:
       CACHE_TTL: 5m
       ACCESS_TOKEN_TTL: 15m
       REFRESH_TOKEN_TTL: 7d
-      REFRESH_TOKEN_COOKIE_SECURE: "true"
-      REFRESH_TOKEN_COOKIE_SAME_SITE: strict
       EMAIL_FROM: ${EMAIL_FROM}
       EMAIL_TRANSPORT: ${EMAIL_TRANSPORT:-smtp}
       EMAIL_SMTP_HOST: ${SMTP_HOST}
@@ -269,10 +283,7 @@ services:
       RATE_LIMITER_ENABLED: "true"
       RATE_LIMITER_POINTS: 100
       RATE_LIMITER_DURATION: 1
-      LOG_LEVEL: info
       LOG_STYLE: raw
-      CORS_ENABLED: "true"
-      CORS_ORIGIN: "https://*.${DOMAIN}"
       IP_TRUST_PROXY: "true"
       IP_CUSTOM_HEADER: "X-Forwarded-For"
     volumes:
