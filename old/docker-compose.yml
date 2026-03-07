@@ -1,0 +1,551 @@
+version: "3.9"
+
+# =============================================================================
+# PRODUCTION DOCKER COMPOSE
+# Services: FlowiseAI | OpenCTI (openclaw) | Directus CMS | Metabase x2
+# External: Managed MongoDB (Metabase) | Managed MySQL (Directus)
+# =============================================================================
+
+networks:
+  proxy_net:
+    driver: bridge
+    name: proxy_net
+  flowise_net:
+    driver: bridge
+    name: flowise_net
+  opencti_net:
+    driver: bridge
+    name: opencti_net
+  directus_net:
+    driver: bridge
+    name: directus_net
+  metabase_net:
+    driver: bridge
+    name: metabase_net
+
+volumes:
+  # FlowiseAI
+  flowise_data:
+    driver: local
+  flowise_uploads:
+    driver: local
+
+  # OpenCTI / OpenClaw
+  opencti_data:
+    driver: local
+  opencti_logs:
+    driver: local
+  opencti_config:
+    driver: local
+  elasticsearch_data:
+    driver: local
+  minio_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  redis_data:
+    driver: local
+
+  # Directus CMS
+  directus_uploads:
+    driver: local
+  directus_extensions:
+    driver: local
+  directus_templates:
+    driver: local
+  directus_logs:
+    driver: local
+
+  # Metabase Instance 1
+  metabase1_data:
+    driver: local
+  metabase1_plugins:
+    driver: local
+  metabase1_logs:
+    driver: local
+
+  # Metabase Instance 2
+  metabase2_data:
+    driver: local
+  metabase2_plugins:
+    driver: local
+  metabase2_logs:
+    driver: local
+
+  # Shared / Infra
+  traefik_certs:
+    driver: local
+  traefik_logs:
+    driver: local
+
+# =============================================================================
+# SERVICES
+# =============================================================================
+services:
+
+  # ---------------------------------------------------------------------------
+  # TRAEFIK — Reverse Proxy / TLS Termination
+  # ---------------------------------------------------------------------------
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=proxy_net"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/certs/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--log.level=INFO"
+      - "--log.filePath=/logs/traefik.log"
+      - "--accesslog=true"
+      - "--accesslog.filepath=/logs/access.log"
+      - "--metrics.prometheus=true"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_certs:/certs
+      - traefik_logs:/logs
+    networks:
+      - proxy_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN}`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=auth@docker"
+      - "traefik.http.middlewares.auth.basicauth.users=${TRAEFIK_DASHBOARD_CREDENTIALS}"
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # FLOWISEAI — LLM Workflow Builder
+  # ---------------------------------------------------------------------------
+  flowise:
+    image: flowiseai/flowise:latest
+    container_name: flowise
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      FLOWISE_USERNAME: ${FLOWISE_USERNAME}
+      FLOWISE_PASSWORD: ${FLOWISE_PASSWORD}
+      FLOWISE_SECRETKEY_OVERWRITE: ${FLOWISE_SECRET_KEY}
+      DATABASE_TYPE: postgres
+      DATABASE_HOST: ${FLOWISE_DB_HOST}
+      DATABASE_PORT: ${FLOWISE_DB_PORT:-5432}
+      DATABASE_USER: ${FLOWISE_DB_USER}
+      DATABASE_PASSWORD: ${FLOWISE_DB_PASSWORD}
+      DATABASE_NAME: ${FLOWISE_DB_NAME}
+      DATABASE_SSL: "true"
+      APIKEY_PATH: /data/api-keys
+      SECRETKEY_PATH: /data/secret-keys
+      LOG_PATH: /data/logs
+      BLOB_STORAGE_PATH: /data/uploads
+      TOOL_FUNCTION_BUILTIN_DEP: crypto,fs
+      TOOL_FUNCTION_EXTERNAL_DEP: moment,lodash
+      NODE_ENV: production
+      # Optional: Langchain/OpenAI API keys
+      # OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - flowise_data:/data
+      - flowise_uploads:/data/uploads
+    networks:
+      - proxy_net
+      - flowise_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.flowise.rule=Host(`flowise.${DOMAIN}`)"
+      - "traefik.http.routers.flowise.entrypoints=websecure"
+      - "traefik.http.routers.flowise.tls.certresolver=letsencrypt"
+      - "traefik.http.services.flowise.loadbalancer.server.port=3000"
+      - "traefik.http.routers.flowise.middlewares=secure-headers@docker"
+      - "traefik.http.middlewares.secure-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.secure-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.secure-headers.headers.forceSTSHeader=true"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/v1/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # OPENCTI / OPENCLAW — Threat Intelligence Platform
+  # ---------------------------------------------------------------------------
+
+  # Redis (required by OpenCTI)
+  redis:
+    image: redis:7.2-alpine
+    container_name: opencti_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+      --save 60 1
+      --loglevel warning
+    volumes:
+      - redis_data:/data
+    networks:
+      - opencti_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Elasticsearch (required by OpenCTI)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.0
+    container_name: opencti_elasticsearch
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      cluster.name: opencti
+      ES_JAVA_OPTS: "-Xms${ES_JAVA_XMS:-2g} -Xmx${ES_JAVA_XMX:-2g}"
+      xpack.security.enabled: "true"
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
+      xpack.security.http.ssl.enabled: "false"
+      bootstrap.memory_lock: "true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - opencti_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # MinIO (S3-compatible object store for OpenCTI)
+  minio:
+    image: minio/minio:latest
+    container_name: opencti_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    networks:
+      - opencti_net
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # RabbitMQ (message broker for OpenCTI)
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: opencti_rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_VHOST: opencti
+      RABBITMQ_VM_MEMORY_HIGH_WATERMARK: "0.8"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - opencti_net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # OpenCTI (OpenClaw)
+  opencti:
+    image: opencti/platform:6.2.18
+    container_name: opencti
+    restart: unless-stopped
+    environment:
+      NODE_OPTIONS: --max-old-space-size=8096
+      APP__PORT: 8080
+      APP__BASE_URL: https://opencti.${DOMAIN}
+      APP__ADMIN__EMAIL: ${OPENCTI_ADMIN_EMAIL}
+      APP__ADMIN__PASSWORD: ${OPENCTI_ADMIN_PASSWORD}
+      APP__ADMIN__TOKEN: ${OPENCTI_ADMIN_TOKEN}
+      APP__APP_LOGS__LOGS_LEVEL: info
+      REDIS__HOSTNAME: redis
+      REDIS__PORT: 6379
+      REDIS__USE_SSL: "false"
+      REDIS__PASSWORD: ${REDIS_PASSWORD}
+      ELASTICSEARCH__URL: http://elasticsearch:9200
+      ELASTICSEARCH__USERNAME: elastic
+      ELASTICSEARCH__PASSWORD: ${ELASTIC_PASSWORD}
+      MINIO__ENDPOINT: minio
+      MINIO__PORT: 9000
+      MINIO__USE_SSL: "false"
+      MINIO__ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO__SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      RABBITMQ__HOSTNAME: rabbitmq
+      RABBITMQ__PORT: 5672
+      RABBITMQ__PORT_MANAGEMENT: 15672
+      RABBITMQ__MANAGEMENT_SSL: "false"
+      RABBITMQ__USERNAME: ${RABBITMQ_USER}
+      RABBITMQ__PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ__VHOST: opencti
+      SMTP__HOSTNAME: ${SMTP_HOST:-localhost}
+      SMTP__PORT: ${SMTP_PORT:-25}
+      PROVIDERS__LOCAL__STRATEGY: LocalStrategy
+    volumes:
+      - opencti_data:/opt/opencti/data
+      - opencti_logs:/opt/opencti/logs
+      - opencti_config:/opt/opencti/config
+    networks:
+      - proxy_net
+      - opencti_net
+    depends_on:
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.opencti.rule=Host(`opencti.${DOMAIN}`)"
+      - "traefik.http.routers.opencti.entrypoints=websecure"
+      - "traefik.http.routers.opencti.tls.certresolver=letsencrypt"
+      - "traefik.http.services.opencti.loadbalancer.server.port=8080"
+      - "traefik.http.routers.opencti.middlewares=secure-headers@docker"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+  # OpenCTI Worker (connector processor)
+  opencti-worker:
+    image: opencti/worker:6.2.18
+    container_name: opencti_worker
+    restart: unless-stopped
+    environment:
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: ${OPENCTI_ADMIN_TOKEN}
+      WORKER_LOG_LEVEL: info
+    networks:
+      - opencti_net
+    depends_on:
+      opencti:
+        condition: service_healthy
+    deploy:
+      replicas: 3
+
+  # ---------------------------------------------------------------------------
+  # DIRECTUS CMS — Headless CMS (connects to managed MySQL)
+  # ---------------------------------------------------------------------------
+  directus:
+    image: directus/directus:11.1.0
+    container_name: directus
+    restart: unless-stopped
+    environment:
+      SECRET: ${DIRECTUS_SECRET}
+      # Managed MySQL connection
+      DB_CLIENT: mysql
+      DB_HOST: ${DIRECTUS_DB_HOST}
+      DB_PORT: ${DIRECTUS_DB_PORT:-3306}
+      DB_DATABASE: ${DIRECTUS_DB_NAME}
+      DB_USER: ${DIRECTUS_DB_USER}
+      DB_PASSWORD: ${DIRECTUS_DB_PASSWORD}
+      DB_SSL__REJECT_UNAUTHORIZED: "true"
+      # Admin
+      ADMIN_EMAIL: ${DIRECTUS_ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${DIRECTUS_ADMIN_PASSWORD}
+      # Public URL
+      PUBLIC_URL: https://cms.${DOMAIN}
+      # Storage
+      STORAGE_LOCATIONS: local
+      STORAGE_LOCAL_ROOT: /directus/uploads
+      # Cache
+      CACHE_ENABLED: "true"
+      CACHE_STORE: memory
+      CACHE_TTL: 5m
+      # Auth / security
+      ACCESS_TOKEN_TTL: 15m
+      REFRESH_TOKEN_TTL: 7d
+      REFRESH_TOKEN_COOKIE_SECURE: "true"
+      REFRESH_TOKEN_COOKIE_SAME_SITE: strict
+      # Email
+      EMAIL_FROM: ${EMAIL_FROM}
+      EMAIL_TRANSPORT: ${EMAIL_TRANSPORT:-smtp}
+      EMAIL_SMTP_HOST: ${SMTP_HOST}
+      EMAIL_SMTP_PORT: ${SMTP_PORT:-587}
+      EMAIL_SMTP_USER: ${SMTP_USER}
+      EMAIL_SMTP_PASSWORD: ${SMTP_PASSWORD}
+      EMAIL_SMTP_SECURE: "false"
+      # Rate limiting
+      RATE_LIMITER_ENABLED: "true"
+      RATE_LIMITER_POINTS: 100
+      RATE_LIMITER_DURATION: 1
+      # Logging
+      LOG_LEVEL: info
+      LOG_STYLE: raw
+      # CORS
+      CORS_ENABLED: "true"
+      CORS_ORIGIN: "https://*.${DOMAIN}"
+    volumes:
+      - directus_uploads:/directus/uploads
+      - directus_extensions:/directus/extensions
+      - directus_templates:/directus/templates
+      - directus_logs:/directus/logs
+    networks:
+      - proxy_net
+      - directus_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.directus.rule=Host(`cms.${DOMAIN}`)"
+      - "traefik.http.routers.directus.entrypoints=websecure"
+      - "traefik.http.routers.directus.tls.certresolver=letsencrypt"
+      - "traefik.http.services.directus.loadbalancer.server.port=8055"
+      - "traefik.http.routers.directus.middlewares=secure-headers@docker"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8055/server/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # METABASE INSTANCE 1 — (e.g., Operations / Internal Team)
+  # Uses managed MongoDB as app DB via MongoDB JDBC driver plugin
+  # ---------------------------------------------------------------------------
+  metabase1:
+    image: metabase/metabase:v0.51.4
+    container_name: metabase1
+    restart: unless-stopped
+    environment:
+      JAVA_TIMEZONE: UTC
+      MB_SITE_NAME: ${METABASE1_SITE_NAME:-"Metabase Operations"}
+      MB_SITE_URL: https://metabase1.${DOMAIN}
+      MB_ENCRYPTION_SECRET_KEY: ${METABASE1_ENCRYPTION_KEY}
+      # App DB — Managed MongoDB
+      MB_DB_TYPE: mongo
+      MB_DB_CONNECTION_URI: ${METABASE1_MONGODB_URI}
+      # Email
+      MB_EMAIL_FROM_ADDRESS: ${EMAIL_FROM}
+      MB_SMTP_HOST: ${SMTP_HOST}
+      MB_SMTP_PORT: ${SMTP_PORT:-587}
+      MB_SMTP_USERNAME: ${SMTP_USER}
+      MB_SMTP_PASSWORD: ${SMTP_PASSWORD}
+      MB_SMTP_SECURITY: starttls
+      # Embedding
+      MB_EMBEDDING_SECRET_KEY: ${METABASE1_EMBEDDING_SECRET}
+      # Security
+      MB_SESSION_COOKIE_SAMESITE: strict
+      MB_PASSWORD_COMPLEXITY: strong
+      MB_SESSION_TIMEOUT: '{"unit":"hours","amount":8}'
+      MB_ANON_TRACKING_ENABLED: "false"
+      # Performance
+      MB_JETTY_MAXTHREADS: 50
+      JAVA_OPTS: >-
+        -Xmx2g
+        -Xms512m
+        -XX:+UseG1GC
+        -XX:MaxGCPauseMillis=200
+    volumes:
+      - metabase1_data:/metabase-data
+      - metabase1_plugins:/plugins
+      - metabase1_logs:/var/log/metabase
+    networks:
+      - proxy_net
+      - metabase_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.metabase1.rule=Host(`metabase1.${DOMAIN}`)"
+      - "traefik.http.routers.metabase1.entrypoints=websecure"
+      - "traefik.http.routers.metabase1.tls.certresolver=letsencrypt"
+      - "traefik.http.services.metabase1.loadbalancer.server.port=3000"
+      - "traefik.http.routers.metabase1.middlewares=secure-headers@docker"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # ---------------------------------------------------------------------------
+  # METABASE INSTANCE 2 — (e.g., Client-Facing / Analytics)
+  # Uses managed MongoDB as app DB (separate collection/db)
+  # ---------------------------------------------------------------------------
+  metabase2:
+    image: metabase/metabase:v0.51.4
+    container_name: metabase2
+    restart: unless-stopped
+    environment:
+      JAVA_TIMEZONE: UTC
+      MB_SITE_NAME: ${METABASE2_SITE_NAME:-"Metabase Analytics"}
+      MB_SITE_URL: https://metabase2.${DOMAIN}
+      MB_ENCRYPTION_SECRET_KEY: ${METABASE2_ENCRYPTION_KEY}
+      # App DB — Managed MongoDB (different database name)
+      MB_DB_TYPE: mongo
+      MB_DB_CONNECTION_URI: ${METABASE2_MONGODB_URI}
+      # Email
+      MB_EMAIL_FROM_ADDRESS: ${EMAIL_FROM}
+      MB_SMTP_HOST: ${SMTP_HOST}
+      MB_SMTP_PORT: ${SMTP_PORT:-587}
+      MB_SMTP_USERNAME: ${SMTP_USER}
+      MB_SMTP_PASSWORD: ${SMTP_PASSWORD}
+      MB_SMTP_SECURITY: starttls
+      # Embedding
+      MB_EMBEDDING_SECRET_KEY: ${METABASE2_EMBEDDING_SECRET}
+      # Security
+      MB_SESSION_COOKIE_SAMESITE: strict
+      MB_PASSWORD_COMPLEXITY: strong
+      MB_SESSION_TIMEOUT: '{"unit":"hours","amount":8}'
+      MB_ANON_TRACKING_ENABLED: "false"
+      # Performance
+      MB_JETTY_MAXTHREADS: 50
+      JAVA_OPTS: >-
+        -Xmx2g
+        -Xms512m
+        -XX:+UseG1GC
+        -XX:MaxGCPauseMillis=200
+    volumes:
+      - metabase2_data:/metabase-data
+      - metabase2_plugins:/plugins
+      - metabase2_logs:/var/log/metabase
+    networks:
+      - proxy_net
+      - metabase_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.metabase2.rule=Host(`metabase2.${DOMAIN}`)"
+      - "traefik.http.routers.metabase2.entrypoints=websecure"
+      - "traefik.http.routers.metabase2.tls.certresolver=letsencrypt"
+      - "traefik.http.services.metabase2.loadbalancer.server.port=3000"
+      - "traefik.http.routers.metabase2.middlewares=secure-headers@docker"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s

@@ -1,0 +1,383 @@
+version: "3.9"
+
+# =============================================================================
+# PRODUCTION DOCKER COMPOSE
+# Services: FlowiseAI | OpenClaw (AI Agent) | Directus CMS | Metabase x2
+#           Ollama (local LLM runtime — Llama 3.2 etc.)
+# Proxy:    Nginx  (Cloudflare handles public TLS)
+# External: Managed MongoDB (FlowiseAI + Metabase) | Managed MySQL (Directus)
+# LLM Providers wired into Flowise:
+#   Claude (Anthropic) | DeepSeek (reasoning + chat) | Grok (xAI)
+#   OpenAI | Google | OpenRouter | Ollama (local Llama 3.2)
+# =============================================================================
+
+networks:
+  nginx_net:
+    driver: bridge
+    name: nginx_net
+  flowise_net:
+    driver: bridge
+    name: flowise_net
+  openclaw_net:
+    driver: bridge
+    name: openclaw_net
+  directus_net:
+    driver: bridge
+    name: directus_net
+  metabase_net:
+    driver: bridge
+    name: metabase_net
+  ollama_net:
+    driver: bridge
+    name: ollama_net
+
+volumes:
+  nginx_logs:
+    driver: local
+  flowise_data:
+    driver: local
+  flowise_uploads:
+    driver: local
+  openclaw_config:
+    driver: local
+  openclaw_workspace:
+    driver: local
+  openclaw_data:
+    driver: local
+  directus_uploads:
+    driver: local
+  directus_extensions:
+    driver: local
+  directus_templates:
+    driver: local
+  directus_logs:
+    driver: local
+  metabase1_data:
+    driver: local
+  metabase1_plugins:
+    driver: local
+  metabase1_logs:
+    driver: local
+  metabase2_data:
+    driver: local
+  metabase2_plugins:
+    driver: local
+  metabase2_logs:
+    driver: local
+
+  # Ollama
+  ollama_data:
+    driver: local
+
+services:
+  # ---------------------------------------------------------------------------
+  # FLOWISEAI - LLM Workflow / Agent Builder
+  # App DB: Managed MongoDB
+  # LLM providers pre-wired via env:
+  #   Claude (Anthropic) | DeepSeek (chat + reasoning) | Grok (xAI)
+  #   OpenAI | Google Gemini | OpenRouter | Ollama (local)
+  # ---------------------------------------------------------------------------
+  flowise:
+    image: flowiseai/flowise:latest
+    container_name: flowise
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      FLOWISE_USERNAME: ${FLOWISE_USERNAME}
+      FLOWISE_PASSWORD: ${FLOWISE_PASSWORD}
+      FLOWISE_SECRETKEY_OVERWRITE: ${FLOWISE_SECRET_KEY}
+
+      # --- App Database: Managed MongoDB ---
+      DATABASE_TYPE: mongodb
+      DATABASE_MONGO_URI: ${FLOWISE_MONGODB_URI}
+      # e.g. mongodb+srv://user:pass@cluster.mongodb.net/flowise?retryWrites=true&w=majority
+
+      # --- Storage ---
+      APIKEY_PATH: /data/api-keys
+      SECRETKEY_PATH: /data/secret-keys
+      LOG_PATH: /data/logs
+      BLOB_STORAGE_PATH: /data/uploads
+
+      # --- Tool sandbox deps ---
+      TOOL_FUNCTION_BUILTIN_DEP: crypto,fs
+      TOOL_FUNCTION_EXTERNAL_DEP: moment,lodash
+
+      NODE_ENV: production
+      FLOWISE_CORS_ORIGINS: "https://flowise.${DOMAIN}"
+
+      # -----------------------------------------------------------------------
+      # LLM PROVIDER API KEYS
+      # These are injected as env vars so Flowise credential nodes can pick
+      # them up automatically — or you can set them manually in the UI.
+      # -----------------------------------------------------------------------
+
+      # Claude / Anthropic
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+
+      # DeepSeek — chat (deepseek-chat) + reasoning (deepseek-reasoner / R1)
+      # Both models share the same API key; select model in the Flowise node.
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      # DeepSeek base URL (official endpoint)
+      DEEPSEEK_BASE_URL: https://api.deepseek.com/v1
+
+      # Grok / xAI
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      # xAI OpenAI-compatible base URL
+      XAI_BASE_URL: https://api.x.ai/v1
+
+      # OpenAI (optional, kept for completeness)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+
+      # Google Gemini
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+
+      # OpenRouter (routes to any model, including DeepSeek R1 / Grok)
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+
+      # Ollama — local Llama 3.2 running in the ollama service below
+      # Flowise "Ollama" node: set base URL to http://ollama:11434
+      OLLAMA_BASE_URL: http://ollama:11434
+
+    volumes:
+      - flowise_data:/data
+      - flowise_uploads:/data/uploads
+    expose:
+      - "3000"
+    networks:
+      - nginx_net
+      - flowise_net
+      - ollama_net
+    depends_on:
+      - ollama
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/v1/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+
+  # ---------------------------------------------------------------------------
+  # OPENCLAW - AI Agent Gateway
+  # Official image: ghcr.io/openclaw/openclaw:latest
+  # Web dashboard on port 18789, internal gateway API on 18793.
+  # The CLI sidecar (openclaw-cli) shares the gateway network namespace so
+  # CLI commands reach the gateway reliably over 127.0.0.1.
+  # ---------------------------------------------------------------------------
+  openclaw-gateway:
+    image: ghcr.io/openclaw/openclaw:latest
+    container_name: openclaw-gateway
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # LLM provider keys - add whichever you use
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # Messaging channel tokens
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      # Gateway token locks the web dashboard
+      GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+      # Trust Nginx proxy headers
+      OPENCLAW_TRUSTED_PROXIES: "nginx"
+    volumes:
+      - openclaw_config:/home/node/.openclaw
+      - openclaw_workspace:/home/node/openclaw/workspace
+      - openclaw_data:/home/node/.openclaw/data
+    expose:
+      - "18789"
+      - "18793"
+    networks:
+      - nginx_net
+      - openclaw_net
+    cap_drop:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:18789"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # OpenClaw CLI sidecar
+  # Start with: docker compose --profile cli up -d openclaw-cli
+  # Run CLI commands: docker compose exec openclaw-cli node dist/index.js <cmd>
+  # Examples:
+  #   docker compose exec openclaw-cli node dist/index.js dashboard --no-open
+  #   docker compose exec openclaw-cli node dist/index.js channels add --channel telegram --token <token>
+  openclaw-cli:
+    image: ghcr.io/openclaw/openclaw:latest
+    container_name: openclaw-cli
+    network_mode: "service:openclaw-gateway"
+    restart: "no"
+    entrypoint: ["tail", "-f", "/dev/null"]
+    volumes:
+      - openclaw_config:/home/node/.openclaw
+      - openclaw_workspace:/home/node/openclaw/workspace
+      - openclaw_data:/home/node/.openclaw/data
+    cap_drop:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - openclaw-gateway
+    profiles:
+      - cli
+
+  # ---------------------------------------------------------------------------
+  # DIRECTUS CMS - Headless CMS (connects to managed MySQL)
+  # ---------------------------------------------------------------------------
+  directus:
+    image: directus/directus:11.1.0
+    container_name: directus
+    restart: unless-stopped
+    environment:
+      SECRET: ${DIRECTUS_SECRET}
+      DB_CLIENT: mysql
+      DB_HOST: ${DIRECTUS_DB_HOST}
+      DB_PORT: ${DIRECTUS_DB_PORT:-3306}
+      DB_DATABASE: ${DIRECTUS_DB_NAME}
+      DB_USER: ${DIRECTUS_DB_USER}
+      DB_PASSWORD: ${DIRECTUS_DB_PASSWORD}
+      DB_SSL__REJECT_UNAUTHORIZED: "true"
+      ADMIN_EMAIL: ${DIRECTUS_ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${DIRECTUS_ADMIN_PASSWORD}
+      PUBLIC_URL: https://cms.${DOMAIN}
+      STORAGE_LOCATIONS: local
+      STORAGE_LOCAL_ROOT: /directus/uploads
+      CACHE_ENABLED: "true"
+      CACHE_STORE: memory
+      CACHE_TTL: 5m
+      ACCESS_TOKEN_TTL: 15m
+      REFRESH_TOKEN_TTL: 7d
+      REFRESH_TOKEN_COOKIE_SECURE: "true"
+      REFRESH_TOKEN_COOKIE_SAME_SITE: strict
+      EMAIL_FROM: ${EMAIL_FROM}
+      EMAIL_TRANSPORT: ${EMAIL_TRANSPORT:-smtp}
+      EMAIL_SMTP_HOST: ${SMTP_HOST}
+      EMAIL_SMTP_PORT: ${SMTP_PORT:-587}
+      EMAIL_SMTP_USER: ${SMTP_USER}
+      EMAIL_SMTP_PASSWORD: ${SMTP_PASSWORD}
+      EMAIL_SMTP_SECURE: "false"
+      RATE_LIMITER_ENABLED: "true"
+      RATE_LIMITER_POINTS: 100
+      RATE_LIMITER_DURATION: 1
+      LOG_LEVEL: info
+      LOG_STYLE: raw
+      CORS_ENABLED: "true"
+      CORS_ORIGIN: "https://*.${DOMAIN}"
+      IP_TRUST_PROXY: "true"
+      IP_CUSTOM_HEADER: "X-Forwarded-For"
+    volumes:
+      - directus_uploads:/directus/uploads
+      - directus_extensions:/directus/extensions
+      - directus_templates:/directus/templates
+      - directus_logs:/directus/logs
+    expose:
+      - "8055"
+    networks:
+      - nginx_net
+      - directus_net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8055/server/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # METABASE INSTANCE 1 - Operations / Internal Team
+  # ---------------------------------------------------------------------------
+  metabase1:
+    image: metabase/metabase:v0.51.4
+    container_name: metabase1
+    restart: unless-stopped
+    environment:
+      JAVA_TIMEZONE: UTC
+      MB_SITE_NAME: ${METABASE1_SITE_NAME:-"Operations Dashboard"}
+      MB_SITE_URL: https://metabase1.${DOMAIN}
+      MB_ENCRYPTION_SECRET_KEY: ${METABASE1_ENCRYPTION_KEY}
+      MB_DB_TYPE: mongo
+      MB_DB_CONNECTION_URI: ${METABASE1_MONGODB_URI}
+      MB_EMAIL_FROM_ADDRESS: ${EMAIL_FROM}
+      MB_SMTP_HOST: ${SMTP_HOST}
+      MB_SMTP_PORT: ${SMTP_PORT:-587}
+      MB_SMTP_USERNAME: ${SMTP_USER}
+      MB_SMTP_PASSWORD: ${SMTP_PASSWORD}
+      MB_SMTP_SECURITY: starttls
+      MB_EMBEDDING_SECRET_KEY: ${METABASE1_EMBEDDING_SECRET}
+      MB_SESSION_COOKIE_SAMESITE: strict
+      MB_PASSWORD_COMPLEXITY: strong
+      MB_SESSION_TIMEOUT: '{"unit":"hours","amount":8}'
+      MB_ANON_TRACKING_ENABLED: "false"
+      MB_JETTY_HOST: 0.0.0.0
+      MB_JETTY_MAXTHREADS: 50
+      JAVA_OPTS: >-
+        -Xmx2g -Xms512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200
+    volumes:
+      - metabase1_data:/metabase-data
+      - metabase1_plugins:/plugins
+      - metabase1_logs:/var/log/metabase
+    expose:
+      - "3000"
+    networks:
+      - nginx_net
+      - metabase_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # ---------------------------------------------------------------------------
+  # METABASE INSTANCE 2 - Analytics / Client-Facing
+  # ---------------------------------------------------------------------------
+  metabase2:
+    image: metabase/metabase:v0.51.4
+    container_name: metabase2
+    restart: unless-stopped
+    environment:
+      JAVA_TIMEZONE: UTC
+      MB_SITE_NAME: ${METABASE2_SITE_NAME:-"Analytics Dashboard"}
+      MB_SITE_URL: https://metabase2.${DOMAIN}
+      MB_ENCRYPTION_SECRET_KEY: ${METABASE2_ENCRYPTION_KEY}
+      # DIFFERENT MongoDB database name from instance 1
+      MB_DB_TYPE: mongo
+      MB_DB_CONNECTION_URI: ${METABASE2_MONGODB_URI}
+      MB_EMAIL_FROM_ADDRESS: ${EMAIL_FROM}
+      MB_SMTP_HOST: ${SMTP_HOST}
+      MB_SMTP_PORT: ${SMTP_PORT:-587}
+      MB_SMTP_USERNAME: ${SMTP_USER}
+      MB_SMTP_PASSWORD: ${SMTP_PASSWORD}
+      MB_SMTP_SECURITY: starttls
+      MB_EMBEDDING_SECRET_KEY: ${METABASE2_EMBEDDING_SECRET}
+      MB_SESSION_COOKIE_SAMESITE: strict
+      MB_PASSWORD_COMPLEXITY: strong
+      MB_SESSION_TIMEOUT: '{"unit":"hours","amount":8}'
+      MB_ANON_TRACKING_ENABLED: "false"
+      MB_JETTY_HOST: 0.0.0.0
+      MB_JETTY_MAXTHREADS: 50
+      JAVA_OPTS: >-
+        -Xmx2g -Xms512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200
+    volumes:
+      - metabase2_data:/metabase-data
+      - metabase2_plugins:/plugins
+      - metabase2_logs:/var/log/metabase
+    expose:
+      - "3000"
+    networks:
+      - nginx_net
+      - metabase_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
