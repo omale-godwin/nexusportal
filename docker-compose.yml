@@ -170,7 +170,7 @@ services:
     environment:
       JAVA_TIMEZONE: UTC
       MB_SITE_NAME: ${METABASE1_SITE_NAME:-"Operations Dashboard"}
-      MB_SITE_URL: https://metabase1.${DOMAIN}
+      MB_SITE_URL: http://129.212.146.116:3015
       MB_ENCRYPTION_SECRET_KEY: ${METABASE1_ENCRYPTION_KEY}
       MB_DB_TYPE: mysql
       MB_DB_CONNECTION_URI: ${METABASE1_MYSQL_URI1}
@@ -223,7 +223,7 @@ services:
     environment:
       JAVA_TIMEZONE: UTC
       MB_SITE_NAME: ${METABASE2_SITE_NAME:-"Analytics Dashboard"}
-      MB_SITE_URL: https://metabase2.${DOMAIN}
+      MB_SITE_URL: http://129.212.146.116:3030
       MB_ENCRYPTION_SECRET_KEY: ${METABASE2_ENCRYPTION_KEY}
       MB_DB_TYPE: mysql
       MB_DB_CONNECTION_URI: ${METABASE2_MYSQL_URI2}
