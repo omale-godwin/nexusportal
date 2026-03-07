@@ -115,15 +115,15 @@ services:
       SECRET: ${DIRECTUS_SECRET}
       DB_CLIENT: mysql
       DB_HOST: ${DIRECTUS_DB_HOST}
-      DB_PORT: ${DIRECTUS_DB_PORT:-3306}
+      DB_PORT: ${DIRECTUS_DB_PORT:-25060}
       DB_DATABASE: ${DIRECTUS_DB_NAME}
       DB_USER: ${DIRECTUS_DB_USER}
       DB_PASSWORD: ${DIRECTUS_DB_PASSWORD}
       DB_SSL__REJECT_UNAUTHORIZED: "false"
       ADMIN_EMAIL: ${DIRECTUS_ADMIN_EMAIL}
       ADMIN_PASSWORD: ${DIRECTUS_ADMIN_PASSWORD}
-      PUBLIC_URL: "http://${SERVER_IP}:8055"
-      CORS_ENABLED: "true"
+      PUBLIC_URL: "http://129.212.146.116:8055"
+      CORS_ENABLED: "false"
       CORS_ORIGIN: "*"
       REFRESH_TOKEN_COOKIE_SECURE: "false"
       REFRESH_TOKEN_COOKIE_SAME_SITE: "lax"
@@ -169,10 +169,21 @@ services:
     restart: unless-stopped
     environment:
       JAVA_TIMEZONE: UTC
-      MB_SITE_NAME: ${METABASE1_SITE_NAME:-"Operations Dashboard"}
-      MB_SITE_URL: http://129.212.146.116:3015
+
+      MB_SITE_URL: http://129.212.146.116:3030
       MB_ENCRYPTION_SECRET_KEY: ${METABASE1_ENCRYPTION_KEY}
+
+      MB_SITE_NAME: ${METABASE1_SITE_NAME:-"Operations Dashboard"}
+      # MySQL Configuration - Option A: Separate variables (more reliable)
       MB_DB_TYPE: mysql
+      MB_DB_HOST: ${DIRECTUS_DB_HOST}
+      MB_DB_PORT: ${DIRECTUS_DB_PORT:-25056}
+      MB_DB_DBNAME: ${METABASE1_DB_NAME1}
+      MB_DB_USER: ${DIRECTUS_DB_USER1}
+      MB_DB_PASS: ${DIRECTUS_DB_PASSWORD1}
+      MB_DB_SSL: "false"
+
+
       MB_DB_CONNECTION_URI: ${METABASE1_MYSQL_URI1}
       MB_EMAIL_FROM_ADDRESS: ${EMAIL_FROM}
       MB_SMTP_HOST: ${SMTP_HOST}
@@ -222,11 +233,22 @@ services:
     restart: unless-stopped
     environment:
       JAVA_TIMEZONE: UTC
-      MB_SITE_NAME: ${METABASE2_SITE_NAME:-"Analytics Dashboard"}
-      MB_SITE_URL: http://129.212.146.116:3030
+   
+      
       MB_ENCRYPTION_SECRET_KEY: ${METABASE2_ENCRYPTION_KEY}
+      MB_SITE_NAME: ${METABASE1_SITE_NAME:-"Operations Dashboard"}
+      MB_SITE_URL: http://129.212.146.116:3015
+      
+      # MySQL Configuration - Option A: Separate variables (more reliable)
       MB_DB_TYPE: mysql
-      MB_DB_CONNECTION_URI: ${METABASE2_MYSQL_URI2}
+      MB_DB_HOST: ${DIRECTUS_DB_HOST}
+      MB_DB_PORT: ${DIRECTUS_DB_PORT:-3306}
+      MB_DB_DBNAME: ${METABASE1_DB_NAME2}
+      MB_DB_USER: ${DIRECTUS_DB_USER2}
+      MB_DB_PASS: ${DIRECTUS_DB_PASSWORD2}
+      MB_DB_SSL: "false"
+
+      # MB_DB_CONNECTION_URI: ${METABASE2_MYSQL_URI2}
       MB_EMAIL_FROM_ADDRESS: ${EMAIL_FROM}
       MB_SMTP_HOST: ${SMTP_HOST}
       MB_SMTP_PORT: ${SMTP_PORT:-587}
