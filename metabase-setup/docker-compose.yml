@@ -1,0 +1,139 @@
+
+services:
+  # ---------------------------------------------------------------------------
+  # POSTGRESQL FOR METABASE - With Host Volume Mapping
+  # ---------------------------------------------------------------------------
+  postgres-metabase:
+    image: postgres:15-alpine
+    container_name: postgres-metabase
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_METABASE_USER}
+      POSTGRES_PASSWORD: ${PG_METABASE_PASSWORD}
+      POSTGRES_DB: ${PG_METABASE_DB:-metabase_main}
+    volumes:
+      # Map to current directory ./postgres-data for easy backups
+      - ./postgres-data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${PG_PORT:-5433}:5432"
+    networks:
+      - metabase_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_METABASE_USER}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---------------------------------------------------------------------------
+  # METABASE INSTANCE 1 - Operations Dashboard
+  # ---------------------------------------------------------------------------
+  metabase1:
+    image: metabase/metabase:latest
+    container_name: metabase1
+    restart: unless-stopped
+    depends_on:
+      postgres-metabase:
+        condition: service_healthy
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: postgres-metabase
+      MB_DB_PORT: 5432
+      MB_DB_DBNAME: ${METABASE1_DB_NAME}
+      MB_DB_USER: ${PG_METABASE_USER}
+      MB_DB_PASS: ${PG_METABASE_PASSWORD}
+      
+      MB_ENCRYPTION_SECRET_KEY: ${METABASE1_ENCRYPTION_KEY}
+      MB_SITE_NAME: ${METABASE1_SITE_NAME:-"Operations Dashboard"}
+      MB_SITE_URL: ${METABASE1_SITE_URL}
+      
+      MB_JETTY_HOST: 0.0.0.0
+      MB_JETTY_PORT: 3000
+      MB_ANON_TRACKING_ENABLED: "false"
+      MB_PASSWORD_COMPLEXITY: ${METABASE_PASSWORD_COMPLEXITY:-normal}
+      MB_SESSION_COOKIE_SAMESITE: lax
+      
+      JAVA_OPTS: >-
+        -Xmx${METABASE1_HEAP_MAX:-2g} 
+        -Xms${METABASE1_HEAP_MIN:-512m}
+        -Djava.security.egd=file:/dev/./urandom
+    volumes:
+      - ./metabase1-data:/metabase-data
+      - ./metabase1-plugins:/plugins
+    ports:
+      - "${METABASE1_PORT:-3015}:3000"
+    networks:
+      - metabase_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # METABASE INSTANCE 2 - Analytics Dashboard
+  # ---------------------------------------------------------------------------
+  metabase2:
+    image: metabase/metabase:latest
+    container_name: metabase2
+    restart: unless-stopped
+    depends_on:
+      postgres-metabase:
+        condition: service_healthy
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: postgres-metabase
+      MB_DB_PORT: 5432
+      MB_DB_DBNAME: ${METABASE2_DB_NAME}
+      MB_DB_USER: ${PG_METABASE_USER}
+      MB_DB_PASS: ${PG_METABASE_PASSWORD}
+      
+      MB_ENCRYPTION_SECRET_KEY: ${METABASE2_ENCRYPTION_KEY}
+      MB_SITE_NAME: ${METABASE2_SITE_NAME:-"Analytics Dashboard"}
+      MB_SITE_URL: ${METABASE2_SITE_URL}
+      
+      MB_JETTY_HOST: 0.0.0.0
+      MB_JETTY_PORT: 3000
+      MB_ANON_TRACKING_ENABLED: "false"
+      MB_PASSWORD_COMPLEXITY: ${METABASE_PASSWORD_COMPLEXITY:-normal}
+      MB_SESSION_COOKIE_SAMESITE: lax
+      
+      JAVA_OPTS: >-
+        -Xmx${METABASE2_HEAP_MAX:-2g} 
+        -Xms${METABASE2_HEAP_MIN:-512m}
+        -Djava.security.egd=file:/dev/./urandom
+    volumes:
+      - ./metabase2-data:/metabase-data
+      - ./metabase2-plugins:/plugins
+    ports:
+      - "${METABASE2_PORT:-3030}:3000"
+    networks:
+      - metabase_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+networks:
+  metabase_net:
+    driver: bridge
+    name: metabase_net
