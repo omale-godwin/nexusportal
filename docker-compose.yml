@@ -36,7 +36,6 @@ services:
       - flowise_data:/data
       - flowise_uploads:/data/uploads
     networks:
-      - nginx_net
       - flowise_net
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/v1/ping"]
@@ -93,7 +92,7 @@ services:
     ports:
       - "8055:8055"
     networks:
-      - nginx_net
+     
       - directus_net
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8055/server/health"]
@@ -158,7 +157,7 @@ services:
       - "18789"
       - "18793"
     networks:
-      - nginx_net
+      
       - openclaw_net
     cap_drop:
       - NET_RAW
