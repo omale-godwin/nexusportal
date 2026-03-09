@@ -52,7 +52,7 @@ services:
       - .openclaw_config:/home/node/.openclaw
       - ./openclaw_workspace:/home/node/openclaw/workspace
       - ./openclaw_data:/home/node/.openclaw/data
-    expose:
+    ports:
       - "8789:18789"  
       - "8793:18793"  
     networks:
