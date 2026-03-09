@@ -90,11 +90,11 @@ services:
     container_name: metabase2
     restart: unless-stopped
     depends_on:
-      postgres-metabase:
+      postgres-metabase-nexus:
         condition: service_healthy
     environment:
       MB_DB_TYPE: postgres
-      MB_DB_HOST: postgres-metabase
+      MB_DB_HOST: postgres-metabase-nexus
       MB_DB_PORT: 6432
       MB_DB_DBNAME: ${METABASE2_DB_NAME}
       MB_DB_USER: ${PG_METABASE_USER}

@@ -49,9 +49,9 @@ services:
       # Trust Nginx proxy headers
       OPENCLAW_TRUSTED_PROXIES: "nginx"
     volumes:
-      - openclaw_config:/home/node/.openclaw
-      - openclaw_workspace:/home/node/openclaw/workspace
-      - openclaw_data:/home/node/.openclaw/data
+      - .openclaw_config:/home/node/.openclaw
+      - ./openclaw_workspace:/home/node/openclaw/workspace
+      - ./openclaw_data:/home/node/.openclaw/data
     expose:
       - "8789:18789"  
       - "8793:18793"  
@@ -81,9 +81,9 @@ services:
     restart: "no"
     entrypoint: ["tail", "-f", "/dev/null"]
     volumes:
-      - openclaw_config:/home/node/.openclaw
-      - openclaw_workspace:/home/node/openclaw/workspace
-      - openclaw_data:/home/node/.openclaw/data
+      - ./openclaw_config:/home/node/.openclaw
+      - ./openclaw_workspace:/home/node/openclaw/workspace
+      - ./openclaw_data:/home/node/.openclaw/data
     cap_drop:
       - NET_RAW
       - NET_ADMIN
