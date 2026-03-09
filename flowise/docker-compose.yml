@@ -1,0 +1,68 @@
+
+services:
+  # ---------------------------------------------------------------------------
+  # FLOWISEAI - LLM Workflow / Agent Builder
+  # ---------------------------------------------------------------------------
+  flowise:
+    image: flowiseai/flowise:latest
+    container_name: flowise
+    restart: unless-stopped
+    ports:
+      - "3012:3000"
+    environment:
+      PORT: 3000
+      AUTH_TYPE: ""               
+      FLOWISE_SIGNUP_DISABLED: "true"
+      FLOWISE_SECRETKEY_OVERWRITE: ${FLOWISE_SECRET_KEY}
+      DATABASE_TYPE: mongodb
+      DATABASE_MONGO_URI: ${FLOWISE_MONGODB_URI}
+      APIKEY_PATH: /data/api-keys
+      SECRETKEY_PATH: /data/secret-keys
+      LOG_PATH: /data/logs
+      BLOB_STORAGE_PATH: /data/uploads
+      TOOL_FUNCTION_BUILTIN_DEP: crypto,fs
+      TOOL_FUNCTION_EXTERNAL_DEP: moment,lodash
+      NODE_ENV: production
+      FLOWISE_CORS_ORIGINS: "*"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: https://api.deepseek.com/v1
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      XAI_BASE_URL: https://api.x.ai/v1
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OLLAMA_BASE_URL: http://ollama:11434
+    volumes:
+      - flowise_data:/data
+      - flowise_uploads:/data/uploads
+    networks:
+      - flowise_net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/v1/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+
+  #
+  
+networks:
+  flowise_net:
+    driver: bridge
+    name: flowise_net
+  
+
+
+# ---------------------------------------------------------------------------
+# VOLUMES
+# ---------------------------------------------------------------------------
+volumes:
+  flowise_data:
+    driver: local
+  flowise_uploads:
+    driver: local
+  
+
+
