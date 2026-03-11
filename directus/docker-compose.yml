@@ -60,34 +60,6 @@ services:
       start_period: 60s
   
 
-  # ---------------------------------------------------------------------------
-  # OPENCLAW - AI Agent Gateway
-  # Official image: ghcr.io/openclaw/openclaw:latest
-  # Web dashboard on port 18789, internal gateway API on 18793.
-  # The CLI sidecar (openclaw-cli) shares the gateway network namespace so
-  # CLI commands reach the gateway reliably over 127.0.0.1.
-  # ---------------------------------------------------------------------------
-  # One-shot init container — runs before the gateway, fixes volume ownership.
-  # Docker named volumes are created as root:root. OpenClaw runs as node (UID
-  # 1000 / GID 1000) and cannot write to them without this fix.
-  # Automatically skipped on subsequent starts because the condition is met.
-  openclaw-init:
-    image: busybox:latest
-    container_name: openclaw-init
-    restart: "no"
-    entrypoint: >
-      sh -c "
-        chown -R 1000:1000 /home/node/.openclaw &&
-        chown -R 1000:1000 /home/node/openclaw/workspace &&
-        echo 'OpenClaw volume permissions fixed.'
-      "
-    volumes:
-      - openclaw_config:/home/node/.openclaw
-      - openclaw_workspace:/home/node/openclaw/workspace
-      - openclaw_data:/home/node/.openclaw/data
-
-
-  
 networks:
   directus_net:
     driver: bridge
